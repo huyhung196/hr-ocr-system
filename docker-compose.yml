@@ -1,0 +1,56 @@
+version: '3.8'
+
+services:
+  db:
+    image: postgres:15-alpine
+    container_name: hr_ocr_db
+    environment:
+      POSTGRES_USER: postgres
+      POSTGRES_PASSWORD: postgres
+      POSTGRES_DB: hr_ocr_db
+    ports:
+      - "5432:5432"
+    volumes:
+      - postgres_data:/var/lib/postgresql/data
+    restart: always
+
+  backend:
+    build:
+      context: ./backend
+    container_name: hr_ocr_backend
+    ports:
+      - "8000:8000"
+    env_file:
+      - ./backend/.env
+    environment:
+      - DATABASE_URL=postgresql://postgres:postgres@db:5432/hr_ocr_db
+    volumes:
+      - ./backend:/app
+      - ./LOGIC CÂY LƯU TRỮ.xlsx:/app/LOGIC CÂY LƯU TRỮ.xlsx
+      - paddlex_cache:/root/.paddlex
+      - paddleocr_cache:/root/.paddleocr
+      - torch_cache:/root/.cache/torch
+      - huggingface_cache:/root/.cache/huggingface
+    depends_on:
+      - db
+    restart: always
+
+  frontend:
+    build:
+      context: ./frontend
+    container_name: hr_ocr_frontend
+    ports:
+      - "5173:5173"
+    volumes:
+      - ./frontend:/app
+      - /app/node_modules
+    depends_on:
+      - backend
+    restart: always
+
+volumes:
+  postgres_data:
+  paddlex_cache:
+  paddleocr_cache:
+  torch_cache:
+  huggingface_cache:

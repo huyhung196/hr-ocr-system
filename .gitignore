@@ -1,0 +1,43 @@
+# IDE / OS
+.idea/
+.vscode/
+.DS_Store
+Thumbs.db
+
+# Python / Environments
+venv/
+.venv/
+env/
+__pycache__/
+*.pyc
+
+# Node
+node_modules/
+dist/
+build/
+.vite/
+
+# Credentials & Secrets
+.env
+credentials.json
+token.json
+*.pem
+*.key
+
+# Business Logic Data
+LOGIC CÂY LƯU TRỮ.xlsx
+
+# Uploads, Logs and Outputs
+uploads/
+processed_files/
+output.txt
+*.png
+*.jpg
+*.jpeg
+*.pdf
+*.log
+
+# Caches
+.paddlex/
+.paddleocr/
+.cache/
