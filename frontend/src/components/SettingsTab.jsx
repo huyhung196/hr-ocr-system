@@ -1,9 +1,9 @@
 import React, { useState, useEffect } from 'react';
 import axios from 'axios';
-import { ShieldCheck, HardDrive, Key, Save } from 'lucide-react';
+import { ShieldCheck, HardDrive, Key, Save, RefreshCw } from 'lucide-react';
 import { API_URL } from '../services/api';
 
-const SettingsTab = ({ triggerToast }) => {
+const SettingsTab = ({ triggerToast, fetchEmployees, fetchRules }) => {
   const [gdriveLink, setGdriveLink] = useState('');
   const [isLoading, setIsLoading] = useState(false);
   const [credentialsFile, setCredentialsFile] = useState(null);
@@ -114,8 +114,67 @@ const SettingsTab = ({ triggerToast }) => {
           disabled={isLoading}
           style={{ display: 'flex', alignItems: 'center', gap: '8px' }}
         >
-          {isLoading ? 'Đang lưu...' : <><Save size={18} /> Lưu cấu hình</>}
+          {isLoading ? 'Đang lưu...' : <><Save size={18} /> Lưu cấu hình Drive</>}
         </button>
+      </div>
+
+      <div className="card" style={{ marginTop: '24px' }}>
+        <h3 style={{ borderBottom: '1px solid var(--border-light)', paddingBottom: '12px', marginBottom: '24px', display: 'flex', alignItems: 'center', gap: '8px' }}>
+          <ShieldCheck size={20} className="text-primary" />
+          Cập nhật Dữ liệu Hệ thống (từ Excel)
+        </h3>
+        
+        <div style={{ backgroundColor: '#f9fafb', padding: '16px', borderRadius: '8px', border: '1px solid #e5e7eb', marginBottom: '24px' }}>
+          <p style={{ margin: '0 0 16px 0', fontSize: '13px', color: '#6b7280', lineHeight: '1.5' }}>
+            Tải lên file <strong>LOGIC CÂY LƯU TRỮ.xlsx</strong> mới nhất để cập nhật ngay lập tức danh sách <strong>Nhân sự</strong>, <strong>Quy tắc</strong> và <strong>Cấu hình Thư mục</strong> vào hệ thống mà không cần phải khởi động lại phần mềm.
+            <br/><br/>
+            <em>Lưu ý: Những quy tắc hoặc nhân sự đã được chỉnh sửa/thêm thủ công trên phần mềm sẽ được giữ nguyên và ưu tiên hơn dữ liệu trong Excel.</em>
+          </p>
+          
+          <div className="form-group" style={{ marginBottom: '16px' }}>
+            <input 
+              id="excelFile"
+              type="file" 
+              accept=".xlsx,.xls"
+              className="input-field"
+            />
+          </div>
+          
+          <button 
+            className="btn btn-outline" 
+            onClick={async () => {
+              const fileInput = document.getElementById('excelFile');
+              const file = fileInput.files[0];
+              if (!file) {
+                triggerToast("Vui lòng chọn file Excel để tải lên.", "warning");
+                return;
+              }
+              
+              setIsLoading(true);
+              const formData = new FormData();
+              formData.append('file', file);
+              
+              try {
+                const res = await axios.post(`${API_URL}/settings/upload-excel`, formData, {
+                  headers: { 'Content-Type': 'multipart/form-data' }
+                });
+                triggerToast(res.data.message || "Đã cập nhật dữ liệu thành công!", "success");
+                fileInput.value = '';
+                if (fetchEmployees) fetchEmployees();
+                if (fetchRules) fetchRules();
+              } catch (error) {
+                console.error("Error uploading excel:", error);
+                triggerToast(error.response?.data?.detail || "Lỗi khi cập nhật dữ liệu Excel.", "danger");
+              } finally {
+                setIsLoading(false);
+              }
+            }} 
+            disabled={isLoading}
+            style={{ display: 'flex', alignItems: 'center', gap: '8px', color: '#0f766e', borderColor: '#0f766e' }}
+          >
+            {isLoading ? 'Đang cập nhật...' : <><RefreshCw size={16} /> Bắt đầu cập nhật dữ liệu</>}
+          </button>
+        </div>
       </div>
     </div>
   );

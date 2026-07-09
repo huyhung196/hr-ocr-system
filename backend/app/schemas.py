@@ -54,6 +54,19 @@ class Position(PositionBase):
 class EmployeeCreate(EmployeeBase):
     pass
 
+class EmployeeUpdate(BaseModel):
+    full_name: Optional[str] = None
+    department: Optional[str] = None
+    company: Optional[str] = None
+    title: Optional[str] = None
+    team: Optional[str] = None
+    status: Optional[str] = None
+    bhxh: Optional[str] = None
+    cccd: Optional[str] = None
+    join_date: Optional[date] = None
+    resignation_date: Optional[date] = None
+    notes: Optional[str] = None
+
 class Employee(EmployeeBase):
     id: int
     class Config:
@@ -107,5 +120,29 @@ class SystemSettingCreate(SystemSettingBase):
 class SystemSetting(SystemSettingBase):
     key: str
     updated_at: Optional[datetime] = None
+    class Config:
+        from_attributes = True
+
+class DocRuleBase(BaseModel):
+    doc_type: str
+    keyword: str
+    required_phrases: Optional[str] = None
+    excluded_phrases: Optional[str] = None
+    format: Optional[str] = None
+    folder_path: Optional[str] = None
+
+class DocRuleCreate(DocRuleBase):
+    pass
+
+class DocRuleUpdate(BaseModel):
+    keyword: Optional[str] = None
+    required_phrases: Optional[str] = None
+    excluded_phrases: Optional[str] = None
+    format: Optional[str] = None
+    folder_path: Optional[str] = None
+
+class DocRule(DocRuleBase):
+    id: int
+    is_deleted: int
     class Config:
         from_attributes = True

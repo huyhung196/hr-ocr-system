@@ -11,7 +11,7 @@ EXCEL_FILE_PATH = docker_excel if os.path.exists(docker_excel) else root_excel
 
 def get_employee_data():
     try:
-        df = pd.read_excel(EXCEL_FILE_PATH, sheet_name='Database_nhan_vien')
+        df = pd.read_excel(EXCEL_FILE_PATH, sheet_name='Database_nhan_vien', dtype={'Mã nhân viên': str, 'Số CCCD': str, 'Mã BHXH': str})
         # Filter out nan
         df = df.dropna(subset=['Mã nhân viên', 'Họ và tên'])
         employees = []

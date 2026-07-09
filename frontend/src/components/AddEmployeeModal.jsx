@@ -3,7 +3,8 @@ import { X, Plus, Save } from 'lucide-react';
 import axios from 'axios';
 import { API_URL } from '../services/api';
 
-function AddEmployeeModal({ onClose, onSaveSuccess }) {
+function AddEmployeeModal({ onClose, onSaveSuccess, existingEmployee = null }) {
+  const isEdit = !!existingEmployee;
   const [formData, setFormData] = useState({
     employee_code: '',
     full_name: '',
@@ -28,7 +29,23 @@ function AddEmployeeModal({ onClose, onSaveSuccess }) {
 
   useEffect(() => {
     fetchOptions();
-  }, []);
+    if (isEdit && existingEmployee) {
+      setFormData({
+        employee_code: existingEmployee.employee_code || '',
+        full_name: existingEmployee.full_name || '',
+        company: existingEmployee.company || '',
+        department: existingEmployee.department || '',
+        title: existingEmployee.title || '',
+        team: existingEmployee.team || '',
+        status: existingEmployee.status || 'Chính thức',
+        bhxh: existingEmployee.bhxh || '',
+        cccd: existingEmployee.cccd || '',
+        join_date: existingEmployee.join_date ? existingEmployee.join_date.split('T')[0] : '',
+        resignation_date: existingEmployee.resignation_date ? existingEmployee.resignation_date.split('T')[0] : '',
+        notes: existingEmployee.notes || ''
+      });
+    }
+  }, [existingEmployee, isEdit]);
 
   const fetchOptions = async () => {
     try {
@@ -60,40 +77,37 @@ function AddEmployeeModal({ onClose, onSaveSuccess }) {
       else if (type === 'department') endpoint = '/departments';
       else if (type === 'position') endpoint = '/positions';
 
-      const payload = { name: name.trim() };
+      const res = await axios.post(`${API_URL}${endpoint}`, { name: name.trim() });
       
-      const res = await axios.post(`${API_URL}${endpoint}`, payload);
+      if (type === 'company') setCompanies([...companies, res.data]);
+      else if (type === 'department') setDepartments([...departments, res.data]);
+      else if (type === 'position') setPositions([...positions, res.data]);
       
-      if (type === 'company') {
-        setCompanies([...companies, res.data]);
-        setFormData(prev => ({ ...prev, company: res.data.name }));
-      } else if (type === 'department') {
-        setDepartments([...departments, res.data]);
-        setFormData(prev => ({ ...prev, department: res.data.name }));
-      } else if (type === 'position') {
-        setPositions([...positions, res.data]);
-        setFormData(prev => ({ ...prev, title: res.data.name }));
-      }
+      setFormData(prev => ({ ...prev, [type === 'position' ? 'title' : type]: res.data.name }));
     } catch (err) {
-      alert(`Lỗi khi thêm: ${err.response?.data?.detail || err.message}`);
+      alert("Lỗi khi thêm mới (có thể đã tồn tại).");
     }
   };
 
   const handleSubmit = async (e) => {
     e.preventDefault();
-    setError(null);
     if (!formData.employee_code || !formData.full_name) {
-      setError("Vui lòng nhập Mã nhân viên và Họ tên.");
+      setError("Mã NV và Họ tên là bắt buộc.");
       return;
     }
-    
+
     setLoading(true);
+    setError(null);
     try {
       const payload = { ...formData };
       if (!payload.join_date) delete payload.join_date;
       if (!payload.resignation_date) delete payload.resignation_date;
-      
-      await axios.post(`${API_URL}/employees`, payload);
+
+      if (isEdit) {
+        await axios.put(`${API_URL}/employees/${existingEmployee.employee_code}`, payload);
+      } else {
+        await axios.post(`${API_URL}/employees`, payload);
+      }
       onSaveSuccess();
     } catch (err) {
       setError(err.response?.data?.detail || "Đã xảy ra lỗi khi lưu nhân viên.");

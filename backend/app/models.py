@@ -18,6 +18,7 @@ class Employee(Base):
     join_date = Column(Date, nullable=True)
     resignation_date = Column(Date, nullable=True)
     notes = Column(Text, nullable=True)
+    is_deleted = Column(Integer, default=0)
 
 class Company(Base):
     __tablename__ = "companies"
@@ -58,6 +59,18 @@ class ScanLog(Base):
     document_date = Column(String(50), nullable=True)
     period = Column(String(50), nullable=True)
     detail_text = Column(String(255), nullable=True)
+
+class DocRule(Base):
+    __tablename__ = "doc_rules"
+
+    id = Column(Integer, primary_key=True, index=True)
+    doc_type = Column(String(50), unique=True, index=True)
+    keyword = Column(String(255))
+    required_phrases = Column(Text, nullable=True)
+    excluded_phrases = Column(Text, nullable=True)
+    format = Column(String(255), nullable=True)
+    folder_path = Column(String(500), nullable=True)
+    is_deleted = Column(Integer, default=0)
 
 class SystemSetting(Base):
     __tablename__ = "system_settings"

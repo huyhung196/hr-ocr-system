@@ -1,4 +1,8 @@
-import { Search, RefreshCw, FileCheck } from 'lucide-react';
+import { useState } from 'react';
+import { Search, RefreshCw, FileCheck, Plus, Edit, Trash2 } from 'lucide-react';
+import axios from 'axios';
+import { API_URL } from '../services/api';
+import RuleModal from './RuleModal';
 
 function RulesTab({
   filteredRules,
@@ -9,10 +13,48 @@ function RulesTab({
   fetchRules,
   testText,
   handleTestTextChange,
-  testResult
+  testResult,
+  triggerToast
 }) {
+  const [showRuleModal, setShowRuleModal] = useState(false);
+  const [selectedRule, setSelectedRule] = useState(null);
+
+  const handleEdit = (rule) => {
+    setSelectedRule(rule);
+    setShowRuleModal(true);
+  };
+
+  const handleAdd = () => {
+    setSelectedRule(null);
+    setShowRuleModal(true);
+  };
+
+  const handleDelete = async (doc_type) => {
+    if (window.confirm(`Bạn có chắc chắn muốn xóa quy tắc phân loại "${doc_type}" không?`)) {
+      try {
+        await axios.delete(`${API_URL}/doc_rules/${doc_type}`);
+        if (triggerToast) triggerToast("Đã xóa quy tắc thành công", "success");
+        fetchRules();
+      } catch (error) {
+        console.error("Lỗi khi xóa quy tắc:", error);
+        if (triggerToast) triggerToast("Lỗi khi xóa quy tắc", "danger");
+      }
+    }
+  };
+
   return (
     <div className="glass-panel animate-fade-in">
+      {showRuleModal && (
+        <RuleModal 
+          onClose={() => setShowRuleModal(false)}
+          onSaveSuccess={() => {
+            setShowRuleModal(false);
+            if (triggerToast) triggerToast("Đã lưu quy tắc thành công", "success");
+            fetchRules();
+          }}
+          existingRule={selectedRule}
+        />
+      )}
       <div style={{ display: 'flex', justifyContent: 'space-between', alignItems: 'center', marginBottom: '24px' }}>
         <div>
           <h2 style={{ fontSize: '22px' }}>Danh mục Quy tắc Cây lưu trữ</h2>
@@ -20,9 +62,14 @@ function RulesTab({
             Bản đồ hướng dẫn phân loại và các từ khóa bắt buộc/loại trừ được định nghĩa trong Excel.
           </p>
         </div>
-        <button className="btn btn-outline" onClick={fetchRules}>
-          <RefreshCw size={14} /> Làm mới
-        </button>
+        <div style={{ display: 'flex', gap: '12px' }}>
+          <button className="btn btn-outline" onClick={fetchRules}>
+            <RefreshCw size={14} /> Làm mới
+          </button>
+          <button className="btn btn-primary" onClick={handleAdd} style={{ display: 'flex', alignItems: 'center', gap: '6px' }}>
+            <Plus size={14} /> Thêm quy tắc
+          </button>
+        </div>
       </div>
 
       {/* Interactive Live Rule Tester Box */}
@@ -111,7 +158,8 @@ function RulesTab({
               <th style={{ padding: '14px 10px', fontSize: '12.5px' }}>Cụm từ bắt buộc</th>
               <th style={{ padding: '14px 10px', fontSize: '12.5px' }}>Cụm từ loại trừ</th>
               <th style={{ padding: '14px 10px', fontSize: '12.5px' }}>Format tên file lưu</th>
-              <th style={{ padding: '14px 10px', fontSize: '12.5px' }}>Folder cất trữ</th>
+              <th style={{ padding: '14px 10px', fontSize: '12.5px', minWidth: '130px' }}>Folder cất trữ</th>
+              <th style={{ padding: '14px 10px', fontSize: '12.5px', textAlign: 'center' }}>Thao tác</th>
             </tr>
           </thead>
           <tbody>
@@ -122,12 +170,22 @@ function RulesTab({
                 <td style={{ fontSize: '12.5px', color: '#0f766e', padding: '14px 10px', minWidth: '150px' }}>
                   {rule.required_phrases ? rule.required_phrases.split('|').join(' | ') : '—'}
                 </td>
-                <td style={{ fontSize: '12.5px', color: '#be123c', padding: '14px 10px' }}>
+                <td style={{ fontSize: '12.5px', color: '#be123c', padding: '14px 10px', minWidth: '150px' }}>
                   {rule.excluded_phrases ? rule.excluded_phrases.split('|').join(' | ') : '—'}
                 </td>
                 <td style={{ fontStyle: 'italic', fontSize: '12.5px', padding: '14px 10px', whiteSpace: 'nowrap' }}>{rule.format || '—'}</td>
-                <td style={{ padding: '14px 10px', fontSize: '13px' }}>
+                <td style={{ padding: '14px 10px', fontSize: '13px', minWidth: '130px' }}>
                   <span className="path-text" title={rule.folder_path}>{rule.folder_path}</span>
+                </td>
+                <td style={{ padding: '14px 10px', textAlign: 'center' }}>
+                  <div style={{ display: 'flex', justifyContent: 'center', gap: '8px' }}>
+                    <button className="btn-icon" onClick={() => handleEdit(rule)} title="Sửa">
+                      <Edit size={16} />
+                    </button>
+                    <button className="btn-icon" onClick={() => handleDelete(rule.doc_type)} title="Xóa" style={{ color: '#ef4444' }}>
+                      <Trash2 size={16} />
+                    </button>
+                  </div>
                 </td>
               </tr>
             ))}

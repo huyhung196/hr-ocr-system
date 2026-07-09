@@ -11,7 +11,7 @@ from app.core.config import settings
 from app.services.llm_service import classify_document_groq
 
 # Initialize OCR engine for Vietnamese
-ocr = PaddleOCR(use_angle_cls=True, lang='vi', enable_mkldnn=False)
+ocr = PaddleOCR(use_angle_cls=False, lang='vi', enable_mkldnn=False)
 
 vietocr_predictor = None
 
@@ -92,7 +92,9 @@ def extract_text_from_image(image_path: str, ocr_method: str = "paddle") -> str:
         
         if image_path.lower().endswith('.pdf'):
             doc = fitz.open(image_path)
-            for page_num in range(len(doc)):
+            # Optimize: Only process the first 3 pages to save time (HR info is usually at the beginning)
+            max_pages = min(3, len(doc))
+            for page_num in range(max_pages):
                 page = doc.load_page(page_num)
                 # Try direct text extraction (for digital PDFs)
                 direct_text = page.get_text()
@@ -101,7 +103,7 @@ def extract_text_from_image(image_path: str, ocr_method: str = "paddle") -> str:
                     continue
                 
                 # If scanned PDF, convert to image for OCR
-                mat = fitz.Matrix(2.0, 2.0)
+                mat = fitz.Matrix(1.5, 1.5)
                 pix = page.get_pixmap(matrix=mat)
                 
                 temp_img_path = f"{image_path}_page_{page_num}.png"
@@ -226,18 +228,29 @@ def identify_document(text: str, rules: list, employees: list):
                     raw_emp_code = raw_emp_code[:-2]
             
             # Fuzzy match employee locally to save LLM tokens
+            # Vòng 1: Ưu tiên khớp chính xác mã nhân viên (để phân biệt rõ mã thường và mã cũ có dấu .)
             for emp in employees:
-                # Trực tiếp khớp mã
                 if raw_emp_code and raw_emp_code.upper() == emp['employee_code'].upper():
                     extracted_employee_code = emp['employee_code']
                     break
-                # Khớp theo tên đã chuẩn hoá tiếng Việt (không dấu)
-                if raw_emp_name and emp['full_name']:
-                    norm_raw_name = remove_vietnamese_diacritics(raw_emp_name).upper()
-                    norm_db_name = remove_vietnamese_diacritics(emp['full_name']).upper()
-                    if norm_db_name and (norm_db_name in norm_raw_name or norm_raw_name in norm_db_name):
-                        extracted_employee_code = emp['employee_code']
-                        break
+            
+            # Vòng 2: Khớp nới lỏng dấu chấm hoặc khớp theo tên
+            if not extracted_employee_code:
+                for emp in employees:
+                    # Trực tiếp khớp mã (nới lỏng dấu chấm)
+                    if raw_emp_code:
+                        raw_upper = raw_emp_code.upper()
+                        emp_code_upper = emp['employee_code'].upper()
+                        if raw_upper.rstrip(".") == emp_code_upper.rstrip("."):
+                            extracted_employee_code = emp['employee_code']
+                            break
+                    # Khớp theo tên đã chuẩn hoá tiếng Việt (không dấu)
+                    if raw_emp_name and emp['full_name']:
+                        norm_raw_name = remove_vietnamese_diacritics(raw_emp_name).upper()
+                        norm_db_name = remove_vietnamese_diacritics(emp['full_name']).upper()
+                        if norm_db_name and (norm_db_name in norm_raw_name or norm_raw_name in norm_db_name):
+                            extracted_employee_code = emp['employee_code']
+                            break
             
             meta_dict["document_number"] = result.get("document_number")
             meta_dict["document_date"] = result.get("document_date")

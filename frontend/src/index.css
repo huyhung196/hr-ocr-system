@@ -185,8 +185,9 @@ h1, h2, h3, h4, h5, h6 {
   text-decoration: none;
   font-weight: 600;
   font-size: 14px;
-  padding: 8px 18px;
+  padding: 8px 16px;
   border-radius: 999px;
+  white-space: nowrap;
   transition: all 0.25s cubic-bezier(0.4, 0, 0.2, 1);
 }
 
@@ -433,6 +434,48 @@ h1, h2, h3, h4, h5, h6 {
 
 .data-table tr:hover td {
   background-color: #fff9fa;
+}
+
+/* Sticky Action Column */
+.data-table th:last-child,
+.data-table td:last-child {
+  position: sticky;
+  right: 0;
+  z-index: 10;
+  box-shadow: -4px 0 12px -4px rgba(244, 63, 94, 0.08);
+  min-width: 100px;
+}
+
+.data-table th:last-child {
+  background: #fdf2f4;
+}
+
+.data-table td:last-child {
+  background: white;
+}
+
+.data-table tr:hover td:last-child {
+  background-color: #fff9fa;
+}
+
+/* Icon Buttons */
+.btn-icon {
+  background: transparent;
+  border: none;
+  color: var(--text-muted);
+  cursor: pointer;
+  padding: 6px;
+  border-radius: 8px;
+  display: inline-flex;
+  align-items: center;
+  justify-content: center;
+  transition: all 0.2s ease;
+}
+
+.btn-icon:hover {
+  background: var(--primary-light);
+  color: var(--primary-accent);
+  transform: scale(1.1);
 }
 
 /* Form inputs & autocompletes */

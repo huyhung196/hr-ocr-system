@@ -173,16 +173,42 @@ function App() {
     fetchRules();
   }, []);
 
+  // Polling mechanism for background processing
+  useEffect(() => {
+    const hasPending = scans.some(s => s.status === 'Đang xử lý');
+    let intervalId;
+    if (hasPending) {
+      intervalId = setInterval(() => {
+        axios.get(`${API_URL}/scans`).then(res => {
+          setScans(res.data);
+          
+          // Use functional state update to avoid stale closures
+          setActiveReviewId(prevId => {
+            const reviewPending = res.data.filter(s => s.status === 'Chờ review tên' || s.status === 'Sẵn sàng đặt tên');
+            if (reviewPending.length > 0 && !prevId) {
+              return reviewPending[0].id;
+            }
+            return prevId;
+          });
+        }).catch(err => console.error("Error polling scans:", err));
+      }, 3000);
+    }
+    return () => clearInterval(intervalId);
+  }, [scans]);
+
   const fetchScans = async () => {
     try {
       const response = await axios.get(`${API_URL}/scans`);
       setScans(response.data);
       
       // Auto-set the first review scan as active if none selected
-      const reviewPending = response.data.filter(s => s.status === 'Chờ review tên' || s.status === 'Sẵn sàng đặt tên');
-      if (reviewPending.length > 0 && !activeReviewId) {
-        setActiveReviewId(reviewPending[0].id);
-      }
+      setActiveReviewId(prevId => {
+        const reviewPending = response.data.filter(s => s.status === 'Chờ review tên' || s.status === 'Sẵn sàng đặt tên');
+        if (reviewPending.length > 0 && !prevId) {
+          return reviewPending[0].id;
+        }
+        return prevId;
+      });
     } catch (error) {
       console.error("Error fetching scans:", error);
     }
@@ -227,14 +253,17 @@ function App() {
       await axios.post(`${API_URL}/upload`, formData, {
         headers: { 'Content-Type': 'multipart/form-data' }
       });
-      triggerToast("Tải lên và phân tích tài liệu thành công!", "success");
+      triggerToast("Tài liệu đang được xử lý ngầm, vui lòng chờ trong giây lát!", "success");
+      fetchScans();
+      document.getElementById('file-upload').value = '';
     } catch (error) {
       console.error("Error uploading files:", error);
       triggerToast("Lỗi khi tải lên file.", "danger");
+    } finally {
+      e.target.value = null;
+      setIsUploading(false);
     }
-    
-    setIsUploading(false);
-    fetchScans();
+    await fetchScans(); // Ensure data is fetched before tab switch
     setCurrentTab('review'); // Switch to review tab after upload
   };
 
@@ -360,11 +389,11 @@ function App() {
   // Filters for Employees tab
   const filteredEmployees = employees.filter(emp => {
     const matchesSearch = 
-      emp.full_name?.toLowerCase().includes(empSearch.toLowerCase()) ||
-      emp.employee_code?.toLowerCase().includes(empSearch.toLowerCase()) ||
-      emp.company?.toLowerCase().includes(empSearch.toLowerCase()) ||
-      emp.department?.toLowerCase().includes(empSearch.toLowerCase()) ||
-      emp.title?.toLowerCase().includes(empSearch.toLowerCase());
+      (emp.full_name || '').toLowerCase().includes(empSearch.toLowerCase()) ||
+      (emp.employee_code || '').toLowerCase().includes(empSearch.toLowerCase()) ||
+      (emp.company || '').toLowerCase().includes(empSearch.toLowerCase()) ||
+      (emp.department || '').toLowerCase().includes(empSearch.toLowerCase()) ||
+      (emp.title || '').toLowerCase().includes(empSearch.toLowerCase());
       
     const matchesStatus = 
       empStatusFilter === 'all' || 
@@ -491,6 +520,13 @@ function App() {
           >
             Quy tắc ({rules.length})
           </a>
+          <a 
+            href="#" 
+            className={`nav-link ${currentTab === 'settings' ? 'active' : ''}`}
+            onClick={(e) => { e.preventDefault(); setCurrentTab('settings'); }}
+          >
+            Cài đặt
+          </a>
         </nav>
 
         <div className="welcome-profile">
@@ -568,6 +604,7 @@ function App() {
             setEmpStatusFilter={setEmpStatusFilter}
             fetchEmployees={fetchEmployees}
             setSelectedEmployee={setSelectedEmployee}
+            triggerToast={triggerToast}
           />
         )}
 
@@ -582,6 +619,15 @@ function App() {
             testText={testText}
             handleTestTextChange={handleTestTextChange}
             testResult={testResult}
+            triggerToast={triggerToast}
+          />
+        )}
+
+        {currentTab === 'settings' && (
+          <SettingsTab 
+            triggerToast={triggerToast}
+            fetchEmployees={fetchEmployees}
+            fetchRules={fetchRules}
           />
         )}
       </main>

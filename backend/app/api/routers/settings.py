@@ -74,3 +74,29 @@ def upload_gdrive_auth_files(
         raise HTTPException(status_code=400, detail="Không có file nào được tải lên.")
         
     return {"message": "Tải lên thành công", "files": files_saved}
+
+@router.post("/upload-excel")
+def upload_excel_config(file: UploadFile = File(...)):
+    """
+    Upload file Excel (LOGIC CÂY LƯU TRỮ.xlsx) để cập nhật cấu hình hệ thống
+    """
+    if not file.filename.endswith(('.xlsx', '.xls')):
+        raise HTTPException(status_code=400, detail="Vui lòng tải lên file Excel (.xlsx hoặc .xls)")
+        
+    from app.services.excel import EXCEL_FILE_PATH
+    from app.api.routers.employees import reload_employees_cache
+    from app.api.routers.rules import reload_rules_cache
+    
+    try:
+        # Save the uploaded file, overwriting the existing Excel file
+        with open(EXCEL_FILE_PATH, "wb") as buffer:
+            shutil.copyfileobj(file.file, buffer)
+            
+        # Trigger cache reloads
+        reload_employees_cache()
+        reload_rules_cache()
+        
+        return {"status": "success", "message": "Đã cập nhật hệ thống từ file Excel thành công!"}
+    except Exception as e:
+        print(f"Error updating from excel: {e}")
+        raise HTTPException(status_code=500, detail=f"Lỗi khi cập nhật cấu hình: {str(e)}")

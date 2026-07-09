@@ -10,11 +10,17 @@ router = APIRouter()
 # Cache parsed employee list on startup
 EMPLOYEES_CACHE = get_employee_data()
 
+def reload_employees_cache():
+    global EMPLOYEES_CACHE
+    EMPLOYEES_CACHE = get_employee_data()
+
 def get_all_employees(db: Session) -> List[dict]:
     # Get DB employees
     db_employees = db.query(models.Employee).all()
     db_emp_list = []
     for emp in db_employees:
+        if emp.is_deleted == 1:
+            continue
         db_emp_list.append({
             'employee_code': emp.employee_code,
             'full_name': emp.full_name,
@@ -31,8 +37,14 @@ def get_all_employees(db: Session) -> List[dict]:
         })
     
     # Merge, DB employees override Excel if same employee_code
-    db_emp_codes = {e['employee_code'] for e in db_emp_list}
-    filtered_excel = [e for e in EMPLOYEES_CACHE if e['employee_code'] not in db_emp_codes]
+    # Also we need to filter out excel employees that were deleted in DB
+    db_deleted_codes = {e.employee_code for e in db_employees if e.is_deleted == 1}
+    db_active_codes = {e['employee_code'] for e in db_emp_list}
+    
+    filtered_excel = [
+        e for e in EMPLOYEES_CACHE 
+        if e['employee_code'] not in db_active_codes and e['employee_code'] not in db_deleted_codes
+    ]
     
     return db_emp_list + filtered_excel
 
@@ -56,7 +68,58 @@ def create_employee(employee: schemas.EmployeeCreate, db: Session = Depends(get_
     db.commit()
     db.refresh(db_item)
     return db_item
+@router.put("/employees/{employee_code}", response_model=schemas.Employee)
+def update_employee(employee_code: str, emp_update: schemas.EmployeeUpdate, db: Session = Depends(get_db)):
+    db_emp = db.query(models.Employee).filter(models.Employee.employee_code == employee_code).first()
+    
+    if not db_emp:
+        # Check if it exists in Excel
+        excel_emp = next((e for e in EMPLOYEES_CACHE if e['employee_code'] == employee_code), None)
+        if not excel_emp:
+            raise HTTPException(status_code=404, detail="Không tìm thấy nhân viên")
+            
+        # Create DB override
+        db_emp = models.Employee(
+            employee_code=excel_emp['employee_code'],
+            full_name=excel_emp['full_name'],
+            company=excel_emp['company'],
+            department=excel_emp['department'],
+            title=excel_emp['title'],
+            is_deleted=0
+        )
+        db.add(db_emp)
+        db.commit()
+        db.refresh(db_emp)
+        
+    for key, value in emp_update.dict(exclude_unset=True).items():
+        setattr(db_emp, key, value)
+        
+    db.commit()
+    db.refresh(db_emp)
+    return db_emp
 
+@router.delete("/employees/{employee_code}")
+def delete_employee(employee_code: str, db: Session = Depends(get_db)):
+    db_emp = db.query(models.Employee).filter(models.Employee.employee_code == employee_code).first()
+    
+    if db_emp:
+        db_emp.is_deleted = 1
+        db.commit()
+        return {"status": "success", "message": "Đã xóa nhân viên"}
+        
+    # If not in DB, check Excel
+    excel_emp = next((e for e in EMPLOYEES_CACHE if e['employee_code'] == employee_code), None)
+    if excel_emp:
+        db_emp = models.Employee(
+            employee_code=excel_emp['employee_code'],
+            full_name=excel_emp['full_name'],
+            is_deleted=1
+        )
+        db.add(db_emp)
+        db.commit()
+        return {"status": "success", "message": "Đã xóa nhân viên"}
+        
+    raise HTTPException(status_code=404, detail="Không tìm thấy nhân viên")
 @router.get("/companies", response_model=List[schemas.Company])
 def get_companies(db: Session = Depends(get_db)):
     return db.query(models.Company).all()

@@ -1,4 +1,4 @@
-from fastapi import APIRouter, UploadFile, File, Depends, HTTPException, Form
+from fastapi import APIRouter, UploadFile, File, Depends, HTTPException, Form, BackgroundTasks
 from sqlalchemy.orm import Session
 import shutil
 import os
@@ -6,11 +6,11 @@ import urllib.parse
 from typing import List
 
 from app import models, schemas
-from app.database import get_db
+from app.database import get_db, SessionLocal
 from app.services.ocr import extract_text_from_image, identify_document
 from app.services.excel import format_path_and_filename
-from app.api.routers.employees import EMPLOYEES_CACHE, get_all_employees
-from app.api.routers.rules import RULES_CACHE
+from app.api.routers.employees import get_all_employees
+from app.api.routers.rules import get_all_rules
 
 router = APIRouter()
 
@@ -61,8 +61,108 @@ def upload_file_to_gdrive_if_possible(target_file_path: str, folder_path: str, n
         print(f"[GDrive] Failed to upload to Google Drive: {e}")
     return "local", None
 
+def process_single_file_background(file_path: str, original_filename: str, ocr_method: str, log_id: int):
+    """Xử lý ngầm từng file để không làm treo giao diện UI"""
+    db = SessionLocal()
+    try:
+        # Lấy record từ DB
+        db_log = db.query(models.ScanLog).filter(models.ScanLog.id == log_id).first()
+        if not db_log:
+            return
+            
+        # 3. OCR Text Extraction
+        extracted_text = extract_text_from_image(file_path, ocr_method=ocr_method)
+        
+        # Fetch dynamic employees and rules list
+        current_employees = get_all_employees(db)
+        current_rules = get_all_rules(db)
+        
+        # 4. Identify Doc Type & Employee
+        doc_type, emp_code, meta = identify_document(extracted_text, current_rules, current_employees)
+        
+        # Filename Fallback Parsing (useful for handwritten documents or OCR failures)
+        filename_upper = original_filename.upper()
+        if not doc_type:
+            for rule in current_rules:
+                abbr = rule['doc_type'].upper()
+                keyword = rule['keyword'].upper()
+                if abbr in filename_upper or keyword in filename_upper:
+                    doc_type = rule['doc_type']
+                    print(f"[Filename Fallback] Guessed Doc Type: {doc_type} from filename: {original_filename}")
+                    break
+                    
+        if not emp_code:
+            # 1. Match by numeric employee code inside filename
+            for emp in current_employees:
+                emp_code_db = emp['employee_code'].upper()
+                emp_code_no_dot = emp_code_db.rstrip('.')
+                if emp_code_db in filename_upper or emp_code_no_dot in filename_upper:
+                    emp_code = emp['employee_code']
+                    print(f"[Filename Fallback] Guessed Employee: {emp_code} by code in filename: {original_filename}")
+                    break
+            # 2. Match by normalized name inside filename
+            if not emp_code:
+                from app.services.ocr import remove_vietnamese_diacritics
+                norm_filename = remove_vietnamese_diacritics(filename_upper)
+                for emp in current_employees:
+                    norm_name = remove_vietnamese_diacritics(emp['full_name']).upper()
+                    variants = [
+                        norm_name,
+                        norm_name.replace(" ", "_"),
+                        norm_name.replace(" ", "-"),
+                        norm_name.replace(" ", "")
+                    ]
+                    if any(v in norm_filename for v in variants if v):
+                        emp_code = emp['employee_code']
+                        print(f"[Filename Fallback] Guessed Employee: {emp_code} by normalized name in filename: {original_filename}")
+                        break
+        
+        # 5. Determine New Name and Folder
+        status = "Chờ review tên"
+        new_file_name = None
+        folder_path = None
+        
+        if doc_type and emp_code:
+            status = "Sẵn sàng đặt tên"
+            new_file_name, folder_path = format_path_and_filename(doc_type, emp_code, meta, current_rules, current_employees)
+            file_ext = os.path.splitext(original_filename)[1]
+            if file_ext:
+                base_name = os.path.splitext(new_file_name)[0]
+                new_file_name = base_name + file_ext
+        elif doc_type or emp_code:
+            status = "Chờ review tên"
+            new_file_name, folder_path = format_path_and_filename(doc_type or "UNKNOWN", emp_code or "UNKNOWN", meta, current_rules, current_employees)
+            file_ext = os.path.splitext(original_filename)[1]
+            if file_ext:
+                base_name = os.path.splitext(new_file_name)[0]
+                new_file_name = base_name + file_ext
+            
+        # Update Record
+        db_log.extracted_employee_code = emp_code
+        db_log.extracted_doc_type = doc_type
+        db_log.status = status
+        db_log.new_file_name = new_file_name
+        db_log.folder_path = folder_path
+        
+        if meta:
+            if 'document_number' in meta: db_log.document_number = meta['document_number']
+            if 'document_date' in meta: db_log.document_date = meta['document_date']
+            if 'period' in meta: db_log.period = meta['period']
+            if 'detail_text' in meta: db_log.detail_text = meta['detail_text']
+            
+        db.commit()
+    except Exception as e:
+        print(f"Error processing file background: {e}")
+        db_log = db.query(models.ScanLog).filter(models.ScanLog.id == log_id).first()
+        if db_log:
+            db_log.status = "Lỗi xử lý"
+            db.commit()
+    finally:
+        db.close()
+
 @router.post("/upload", response_model=List[schemas.ScanLog])
 def upload_files(
+    background_tasks: BackgroundTasks,
     files: List[UploadFile] = File(...),
     ocr_method: str = Form("paddle"),
     db: Session = Depends(get_db)
@@ -74,7 +174,7 @@ def upload_files(
         with open(file_path, "wb") as buffer:
             shutil.copyfileobj(file.file, buffer)
             
-        # 2. Initial DB Record
+        # 2. Initial DB Record (Trả về UI ngay lập tức)
         db_log = models.ScanLog(
             original_file_name=file.filename,
             status="Đang xử lý"
@@ -82,95 +182,17 @@ def upload_files(
         db.add(db_log)
         db.commit()
         db.refresh(db_log)
+        results.append(db_log)
         
-        try:
-            # 3. OCR Text Extraction
-            extracted_text = extract_text_from_image(file_path, ocr_method=ocr_method)
-            
-            # Fetch dynamic employees list
-            current_employees = get_all_employees(db)
-            
-            # 4. Identify Doc Type & Employee
-            doc_type, emp_code, meta = identify_document(extracted_text, RULES_CACHE, current_employees)
-            
-            # Filename Fallback Parsing (useful for handwritten documents or OCR failures)
-            filename_upper = file.filename.upper()
-            if not doc_type:
-                for rule in RULES_CACHE:
-                    abbr = rule['doc_type'].upper()
-                    keyword = rule['keyword'].upper()
-                    if abbr in filename_upper or keyword in filename_upper:
-                        doc_type = rule['doc_type']
-                        print(f"[Filename Fallback] Guessed Doc Type: {doc_type} from filename: {file.filename}")
-                        break
-                        
-            if not emp_code:
-                # 1. Match by numeric employee code inside filename
-                for emp in current_employees:
-                    if emp['employee_code'] in filename_upper:
-                        emp_code = emp['employee_code']
-                        print(f"[Filename Fallback] Guessed Employee: {emp_code} by code in filename: {file.filename}")
-                        break
-                # 2. Match by normalized name inside filename
-                if not emp_code:
-                    from app.services.ocr import remove_vietnamese_diacritics
-                    norm_filename = remove_vietnamese_diacritics(filename_upper)
-                    for emp in current_employees:
-                        norm_name = remove_vietnamese_diacritics(emp['full_name']).upper()
-                        variants = [
-                            norm_name,
-                            norm_name.replace(" ", "_"),
-                            norm_name.replace(" ", "-"),
-                            norm_name.replace(" ", "")
-                        ]
-                        if any(v in norm_filename for v in variants if v):
-                            emp_code = emp['employee_code']
-                            print(f"[Filename Fallback] Guessed Employee: {emp_code} by normalized name in filename: {file.filename}")
-                            break
-            
-            # 5. Determine New Name and Folder
-            status = "Chờ review tên"
-            new_file_name = None
-            folder_path = None
-            
-            if doc_type and emp_code:
-                status = "Sẵn sàng đặt tên"
-                new_file_name, folder_path = format_path_and_filename(doc_type, emp_code, meta, RULES_CACHE, current_employees)
-                file_ext = os.path.splitext(file.filename)[1]
-                if file_ext:
-                    base_name = os.path.splitext(new_file_name)[0]
-                    new_file_name = base_name + file_ext
-            elif doc_type or emp_code:
-                status = "Chờ review tên"
-                new_file_name, folder_path = format_path_and_filename(doc_type or "UNKNOWN", emp_code or "UNKNOWN", meta, RULES_CACHE, current_employees)
-                file_ext = os.path.splitext(file.filename)[1]
-                if file_ext:
-                    base_name = os.path.splitext(new_file_name)[0]
-                    new_file_name = base_name + file_ext
-                
-            # Update Record
-            db_log.extracted_employee_code = emp_code
-            db_log.extracted_doc_type = doc_type
-            db_log.status = status
-            db_log.new_file_name = new_file_name
-            db_log.folder_path = folder_path
-            
-            # Save meta
-            db_log.document_number = meta.get("document_number")
-            db_log.document_date = meta.get("document_date")
-            db_log.period = meta.get("period")
-            db_log.detail_text = meta.get("detail_text")
-            
-            db.commit()
-            db.refresh(db_log)
-            results.append(db_log)
-            
-        except Exception as e:
-            print(f"Error handling upload: {e}")
-            db_log.status = "Lỗi xử lý"
-            db.commit()
-            results.append(db_log)
-            
+        # 3. Đẩy tác vụ OCR nặng chạy nền
+        background_tasks.add_task(
+            process_single_file_background,
+            file_path,
+            file.filename,
+            ocr_method,
+            db_log.id
+        )
+        
     return results
 
 @router.get("/scans", response_model=List[schemas.ScanLog])
@@ -198,11 +220,12 @@ def update_scan(scan_id: int, scan_update: schemas.ScanLogUpdate, db: Session = 
                 "period": db_scan.period,
                 "detail_text": db_scan.detail_text
             }
+            current_rules = get_all_rules(db)
             new_file_name, folder_path = format_path_and_filename(
                 db_scan.extracted_doc_type or "UNKNOWN",
                 db_scan.extracted_employee_code or "UNKNOWN",
                 meta,
-                RULES_CACHE,
+                current_rules,
                 get_all_employees(db)
             )
             file_ext = os.path.splitext(db_scan.original_file_name)[1]
@@ -282,11 +305,12 @@ def bulk_approve_scans(req: BulkApproveRequest, db: Session = Depends(get_db)):
                 "period": db_scan.period,
                 "detail_text": db_scan.detail_text
             }
+            current_rules = get_all_rules(db)
             new_file_name, folder_path = format_path_and_filename(
                 db_scan.extracted_doc_type,
                 db_scan.extracted_employee_code,
                 meta,
-                RULES_CACHE,
+                current_rules,
                 get_all_employees(db)
             )
             file_ext = os.path.splitext(db_scan.original_file_name)[1]

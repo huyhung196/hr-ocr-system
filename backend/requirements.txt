@@ -17,4 +17,5 @@ python-dotenv
 vietocr
 torch
 torchvision
-groq
+huggingface-hub
+llama-cpp-python

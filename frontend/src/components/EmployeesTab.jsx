@@ -1,5 +1,7 @@
 import { useState, useEffect } from 'react';
-import { Search, RefreshCw, ChevronRight, ChevronLeft, Plus } from 'lucide-react';
+import { Search, RefreshCw, ChevronRight, ChevronLeft, Plus, Edit, Trash2 } from 'lucide-react';
+import axios from 'axios';
+import { API_URL } from '../services/api';
 import AddEmployeeModal from './AddEmployeeModal';
 
 function EmployeesTab({
@@ -11,9 +13,11 @@ function EmployeesTab({
   empStatusFilter,
   setEmpStatusFilter,
   fetchEmployees,
-  setSelectedEmployee
+  setSelectedEmployee,
+  triggerToast
 }) {
   const [showAddModal, setShowAddModal] = useState(false);
+  const [selectedEmployeeForEdit, setSelectedEmployeeForEdit] = useState(null);
   const [currentPage, setCurrentPage] = useState(1);
   const ITEMS_PER_PAGE = 10; // Hiển thị 10 thẻ mỗi trang (bội số của 2, 3, 4 cho grid)
 
@@ -21,6 +25,29 @@ function EmployeesTab({
   useEffect(() => {
     setCurrentPage(1);
   }, [empSearch, empCompanyFilter, empStatusFilter]);
+
+  const handleEdit = (emp) => {
+    setSelectedEmployeeForEdit(emp);
+    setShowAddModal(true);
+  };
+
+  const handleAdd = () => {
+    setSelectedEmployeeForEdit(null);
+    setShowAddModal(true);
+  };
+
+  const handleDelete = async (employee_code) => {
+    if (window.confirm(`Bạn có chắc chắn muốn xóa nhân viên mã "${employee_code}" không?`)) {
+      try {
+        await axios.delete(`${API_URL}/employees/${employee_code}`);
+        if (triggerToast) triggerToast("Đã xóa nhân viên thành công", "success");
+        fetchEmployees();
+      } catch (error) {
+        console.error("Lỗi khi xóa nhân viên:", error);
+        if (triggerToast) triggerToast("Lỗi khi xóa nhân viên", "danger");
+      }
+    }
+  };
 
   const totalPages = Math.ceil(filteredEmployees.length / ITEMS_PER_PAGE);
   const startIndex = (currentPage - 1) * ITEMS_PER_PAGE;
@@ -39,7 +66,7 @@ function EmployeesTab({
           <button className="btn btn-outline" onClick={fetchEmployees}>
             <RefreshCw size={14} /> Làm mới
           </button>
-          <button className="btn btn-primary" onClick={() => setShowAddModal(true)} style={{ display: 'flex', alignItems: 'center', gap: '6px' }}>
+          <button className="btn btn-primary" onClick={handleAdd} style={{ display: 'flex', alignItems: 'center', gap: '6px' }}>
             <Plus size={14} /> Thêm nhân viên
           </button>
         </div>
@@ -68,11 +95,11 @@ function EmployeesTab({
               style={{ width: '160px' }}
             >
               <option value="all">Tất cả công ty</option>
-              <option value="Global">Thuần Việt Global</option>
-              <option value="Digital">Thuần Việt Digital</option>
-              <option value="NTV">Nệm Thuần Việt</option>
+              <option value="Thuần Việt Global">Thuần Việt Global</option>
+              <option value="Thuần Việt Digital">Thuần Việt Digital</option>
+              <option value="Nệm Thuần Việt">Nệm Thuần Việt</option>
               <option value="Night Dream">Night Dream</option>
-              <option value="Thành Công">Nệm Thành Công</option>
+              <option value="Nệm Thành Công">Nệm Thành Công</option>
             </select>
           </div>
 
@@ -103,6 +130,7 @@ function EmployeesTab({
               <th style={{ padding: '14px 10px', fontSize: '12.5px' }}>Phòng ban</th>
               <th style={{ padding: '14px 10px', fontSize: '12.5px' }}>Chức danh</th>
               <th style={{ padding: '14px 10px', fontSize: '12.5px' }}>Trạng thái</th>
+              <th style={{ padding: '14px 10px', fontSize: '12.5px', textAlign: 'center' }}>Thao tác</th>
             </tr>
           </thead>
           <tbody>
@@ -122,11 +150,30 @@ function EmployeesTab({
                     {emp.resignation_date ? 'Đã nghỉ việc' : 'Đang hoạt động'}
                   </span>
                 </td>
+                <td style={{ padding: '14px 10px', textAlign: 'center' }}>
+                  <div style={{ display: 'flex', justifyContent: 'center', gap: '8px' }}>
+                    <button 
+                      className="btn-icon" 
+                      onClick={(e) => { e.stopPropagation(); handleEdit(emp); }} 
+                      title="Sửa"
+                    >
+                      <Edit size={16} />
+                    </button>
+                    <button 
+                      className="btn-icon" 
+                      onClick={(e) => { e.stopPropagation(); handleDelete(emp.employee_code); }} 
+                      title="Xóa" 
+                      style={{ color: '#ef4444' }}
+                    >
+                      <Trash2 size={16} />
+                    </button>
+                  </div>
+                </td>
               </tr>
             ))}
             {paginatedEmployees.length === 0 && (
               <tr>
-                <td colSpan="6" style={{ padding: '32px', textAlign: 'center', color: 'var(--text-muted)' }}>
+                <td colSpan="7" style={{ padding: '32px', textAlign: 'center', color: 'var(--text-muted)' }}>
                   Không tìm thấy nhân viên nào trùng khớp.
                 </td>
               </tr>
@@ -169,6 +216,7 @@ function EmployeesTab({
             setShowAddModal(false);
             fetchEmployees();
           }} 
+          existingEmployee={selectedEmployeeForEdit}
         />
       )}
     </div>
