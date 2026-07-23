@@ -3,6 +3,10 @@ import os
 os.environ["FLAGS_use_mkldnn"] = "0"
 os.environ["PADDLE_PDX_ENABLE_MKLDNN_BYDEFAULT"] = "0"
 
+from PIL import Image
+if not hasattr(Image, 'ANTIALIAS'):
+    Image.ANTIALIAS = Image.LANCZOS
+
 from paddleocr import PaddleOCR
 import re
 import fitz
@@ -11,7 +15,7 @@ from app.core.config import settings
 from app.services.llm_service import classify_document_groq
 
 # Initialize OCR engine for Vietnamese
-ocr = PaddleOCR(use_angle_cls=False, lang='vi', enable_mkldnn=False)
+ocr = PaddleOCR(use_angle_cls=False, lang='vi', enable_mkldnn=False, use_gpu=False)
 
 vietocr_predictor = None
 
@@ -258,15 +262,15 @@ def identify_document(text: str, rules: list, employees: list):
             meta_dict["detail_text"] = result.get("detail_text")
             
             if extracted_doc_type and extracted_employee_code:
-                print(f"[Groq Classifier] Matched: Doc Type={extracted_doc_type}, Employee={extracted_employee_code}. Reason: {result.get('reason')}")
+                print(f"[Azure OpenAI] Matched: Doc Type={extracted_doc_type}, Employee={extracted_employee_code}. Reason: {result.get('reason')}")
                 return extracted_doc_type, extracted_employee_code, meta_dict
             
-            print(f"[Groq Classifier] Partial match: Doc Type={extracted_doc_type}, Employee={extracted_employee_code} (Raw: {raw_emp_name}/{raw_emp_code}). Falling back to rule-based.")
+            print(f"[Azure OpenAI] Partial match: Doc Type={extracted_doc_type}, Employee={extracted_employee_code} (Raw: {raw_emp_name}/{raw_emp_code}). Falling back to rule-based.")
         else:
-            print("[Groq Classifier] Không nhận được kết quả từ Groq, dùng rule-based fallback.")
+            print("[Azure OpenAI] Không nhận được kết quả từ Azure OpenAI, dùng rule-based fallback.")
 
     except Exception as e:
-        print(f"[Groq Classifier] Lỗi: {e}. Dùng rule-based fallback.")
+        print(f"[Azure OpenAI] Lỗi: {e}. Dùng rule-based fallback.")
 
     # 2. Rule-based Fallback matching
     text_upper = text.upper()

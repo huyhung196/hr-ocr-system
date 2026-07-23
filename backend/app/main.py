@@ -51,9 +51,6 @@ def startup_event():
         # Tải sẵn OCR
         from app.services.ocr import get_vietocr_predictor
         get_vietocr_predictor()
-        # Tải sẵn Local LLM
-        from app.services.llm_service import get_local_llm
-        get_local_llm()
         print("[System] Warmup complete.")
     except Exception as e:
         print(f"[System] Lỗi khởi động model: {e}")

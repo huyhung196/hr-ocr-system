@@ -53,7 +53,7 @@ def get_gdrive_service():
                 
             flow = InstalledAppFlow.from_client_secrets_file(
                 credentials_path, SCOPES)
-            creds = flow.run_local_server(port=0, open_browser=False)
+            creds = flow.run_local_server(port=8080, open_browser=False)
             
         # Save the credentials for the next run
         with open(token_path, 'w') as token:
@@ -81,11 +81,21 @@ def create_folder(service, folder_name, parent_id=None):
         if parent_id:
             query += f" and '{parent_id}' in parents"
             
-        results = service.files().list(q=query, spaces='drive', fields='nextPageToken, files(id, name)').execute()
+        results = service.files().list(
+            q=query, 
+            spaces='drive', 
+            fields='nextPageToken, files(id, name)',
+            includeItemsFromAllDrives=True,
+            supportsAllDrives=True
+        ).execute()
         items = results.get('files', [])
         
         if not items:
-            file = service.files().create(body=file_metadata, fields='id').execute()
+            file = service.files().create(
+                body=file_metadata, 
+                fields='id',
+                supportsAllDrives=True
+            ).execute()
             return file.get('id')
         else:
             return items[0].get('id')
@@ -107,7 +117,12 @@ def upload_to_drive(service, file_path, folder_id, new_file_name):
         
         media = MediaFileUpload(file_path, mimetype=mime_type, resumable=True)
         
-        file = service.files().create(body=file_metadata, media_body=media, fields='id, webViewLink').execute()
+        file = service.files().create(
+            body=file_metadata, 
+            media_body=media, 
+            fields='id, webViewLink',
+            supportsAllDrives=True
+        ).execute()
         print(f"File ID: {file.get('id')}")
         return file.get('id'), file.get('webViewLink')
         

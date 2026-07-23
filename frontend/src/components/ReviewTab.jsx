@@ -280,7 +280,7 @@ function ReviewTab({
               <div className="preview-iframe-wrapper">
                 {activeScan.original_file_name.toLowerCase().endsWith('.pdf') ? (
                   <iframe 
-                    src={`/api/uploads/${activeScan.original_file_name}#toolbar=0&navpanes=0`}
+                    src={`/api/uploads/${activeScan.original_file_name}#toolbar=1&navpanes=0`}
                     className="preview-iframe"
                     title="PDF Preview"
                   />

@@ -14,10 +14,10 @@ RUN apt-get update && apt-get install -y \
     cmake \
     && rm -rf /var/lib/apt/lists/*
 
-COPY requirements.txt .
+# Install PyTorch GPU first
+RUN pip install --no-cache-dir torch torchvision --index-url https://download.pytorch.org/whl/cu118
 
-# Install PyTorch CPU first to keep image build fast and image size small
-RUN pip install --no-cache-dir torch torchvision --index-url https://download.pytorch.org/whl/cpu
+COPY requirements.txt .
 
 # Install python dependencies
 RUN pip install --no-cache-dir -r requirements.txt
@@ -29,4 +29,7 @@ COPY . .
 EXPOSE 8000
 
 # Run FastAPI
+RUN pip install --no-cache-dir nvidia-cudnn-cu11==8.9.2.26 --target=/opt/cudnn8
+ENV LD_LIBRARY_PATH="/opt/cudnn8/nvidia/cudnn/lib:/usr/local/lib/python3.10/site-packages/nvidia/cublas/lib:$LD_LIBRARY_PATH"
+
 CMD ["uvicorn", "app.main:app", "--host", "0.0.0.0", "--port", "8000"]

@@ -175,7 +175,8 @@ function App() {
 
   // Polling mechanism for background processing
   useEffect(() => {
-    const hasPending = scans.some(s => s.status === 'Đang xử lý');
+    const pendingStatuses = ['Đang xử lý', 'Đang trích xuất văn bản (OCR)', 'Đang gọi AI phân loại'];
+    const hasPending = scans.some(s => pendingStatuses.includes(s.status));
     let intervalId;
     if (hasPending) {
       intervalId = setInterval(() => {

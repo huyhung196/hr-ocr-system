@@ -45,20 +45,20 @@ class ScanLog(Base):
 
     id = Column(Integer, primary_key=True, index=True)
     created_at = Column(DateTime(timezone=True), server_default=func.now())
-    original_file_name = Column(String(255))
+    original_file_name = Column(Text)
     extracted_employee_code = Column(String(50), nullable=True)
     extracted_doc_type = Column(String(50), nullable=True)
-    new_file_name = Column(String(255), nullable=True)
+    new_file_name = Column(Text, nullable=True)
     folder_path = Column(String(500), nullable=True)
     status = Column(String(50)) # Chờ review tên, Đã đổi tên, Lỗi xử lý
     drive_file_id = Column(String(255), nullable=True)
     drive_file_url = Column(String(500), nullable=True)
     
     # Metadata columns for Storage Tree renaming rules
-    document_number = Column(String(255), nullable=True)
+    document_number = Column(Text, nullable=True)
     document_date = Column(String(50), nullable=True)
     period = Column(String(50), nullable=True)
-    detail_text = Column(String(255), nullable=True)
+    detail_text = Column(Text, nullable=True)
 
 class DocRule(Base):
     __tablename__ = "doc_rules"

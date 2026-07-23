@@ -63,20 +63,31 @@ def upload_file_to_gdrive_if_possible(target_file_path: str, folder_path: str, n
 
 def process_single_file_background(file_path: str, original_filename: str, ocr_method: str, log_id: int):
     """Xử lý ngầm từng file để không làm treo giao diện UI"""
-    db = SessionLocal()
     try:
         # Lấy record từ DB
-        db_log = db.query(models.ScanLog).filter(models.ScanLog.id == log_id).first()
-        if not db_log:
-            return
-            
-        # 3. OCR Text Extraction
+        with SessionLocal() as db:
+            db_log = db.query(models.ScanLog).filter(models.ScanLog.id == log_id).first()
+            if not db_log:
+                return
+                
+            # Update status: Đang trích xuất văn bản (OCR)
+            db_log.status = "Đang trích xuất văn bản (OCR)"
+            db.commit()
+
+        # 3. OCR Text Extraction (NO DB CONNECTION HELD)
         extracted_text = extract_text_from_image(file_path, ocr_method=ocr_method)
         
         # Fetch dynamic employees and rules list
-        current_employees = get_all_employees(db)
-        current_rules = get_all_rules(db)
-        
+        with SessionLocal() as db:
+            current_employees = get_all_employees(db)
+            current_rules = get_all_rules(db)
+            
+            # Update status: Đang gọi AI phân loại
+            db_log = db.query(models.ScanLog).filter(models.ScanLog.id == log_id).first()
+            if db_log:
+                db_log.status = "Đang gọi AI phân loại"
+                db.commit()
+
         # 4. Identify Doc Type & Employee
         doc_type, emp_code, meta = identify_document(extracted_text, current_rules, current_employees)
         
@@ -138,33 +149,35 @@ def process_single_file_background(file_path: str, original_filename: str, ocr_m
                 new_file_name = base_name + file_ext
             
         # Update Record
-        db_log.extracted_employee_code = emp_code
-        db_log.extracted_doc_type = doc_type
-        db_log.status = status
-        db_log.new_file_name = new_file_name
-        db_log.folder_path = folder_path
-        
-        if meta:
-            if 'document_number' in meta: db_log.document_number = meta['document_number']
-            if 'document_date' in meta: db_log.document_date = meta['document_date']
-            if 'period' in meta: db_log.period = meta['period']
-            if 'detail_text' in meta: db_log.detail_text = meta['detail_text']
-            
-        db.commit()
+        with SessionLocal() as db:
+            db_log = db.query(models.ScanLog).filter(models.ScanLog.id == log_id).first()
+            if db_log:
+                db_log.extracted_employee_code = emp_code
+                db_log.extracted_doc_type = doc_type
+                db_log.status = status
+                db_log.new_file_name = new_file_name
+                db_log.folder_path = folder_path
+                
+                if meta:
+                    if 'document_number' in meta: db_log.document_number = meta['document_number']
+                    if 'document_date' in meta: db_log.document_date = meta['document_date']
+                    if 'period' in meta: db_log.period = meta['period']
+                    if 'detail_text' in meta: db_log.detail_text = meta['detail_text']
+                    
+                db.commit()
     except Exception as e:
         print(f"Error processing file background: {e}")
-        db_log = db.query(models.ScanLog).filter(models.ScanLog.id == log_id).first()
-        if db_log:
-            db_log.status = "Lỗi xử lý"
-            db.commit()
-    finally:
-        db.close()
+        with SessionLocal() as db:
+            db_log = db.query(models.ScanLog).filter(models.ScanLog.id == log_id).first()
+            if db_log:
+                db_log.status = "Lỗi xử lý"
+                db.commit()
 
 @router.post("/upload", response_model=List[schemas.ScanLog])
 def upload_files(
     background_tasks: BackgroundTasks,
     files: List[UploadFile] = File(...),
-    ocr_method: str = Form("paddle"),
+    ocr_method: str = Form("vietocr"),
     db: Session = Depends(get_db)
 ):
     results = []

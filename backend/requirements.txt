@@ -3,8 +3,8 @@ uvicorn
 sqlalchemy
 psycopg2-binary
 python-multipart
-paddlepaddle
-paddleocr
+paddlepaddle-gpu==2.6.2
+paddleocr==2.9.1
 google-api-python-client
 google-auth-httplib2
 google-auth-oauthlib
@@ -17,5 +17,4 @@ python-dotenv
 vietocr
 torch
 torchvision
-huggingface-hub
-llama-cpp-python
+openai
